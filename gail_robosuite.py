@@ -19,17 +19,21 @@ from baselines import logger
 from baselines.gail.dataset.mujoco_dset import Mujoco_Dset
 from baselines.gail.adversary import TransitionClassifier
 
+# Integration with robosuite
+import robosuite
+from robosuite.wrappers import GymWrapper
+
+# For loading policy
+import tensorflow as tf
+import time
 
 def argsparser():
     parser = argparse.ArgumentParser("Tensorflow Implementation of GAIL")
-    parser.add_argument('--env_id', help='environment ID', default='Hopper-v2')
+    parser.add_argument('--env_id', help='environment ID', default='SawyerLift') # Default to SawyerLift
     parser.add_argument('--seed', help='RNG seed', type=int, default=0)
-    parser.add_argument('--expert_path', type=str, default='data/deterministic.trpo.Hopper.0.00.npz')
     parser.add_argument('--checkpoint_dir', help='the directory to save model', default='checkpoint')
     parser.add_argument('--log_dir', help='the directory to save log file', default='log')
     parser.add_argument('--load_model_path', help='if provided, load the model', type=str, default=None)
-    # Task
-    parser.add_argument('--task', type=str, choices=['train', 'evaluate', 'sample'], default='train')
     # for evaluatation
     boolean_flag(parser, 'stochastic_policy', default=False, help='use stochastic/deterministic policy to evaluate')
     boolean_flag(parser, 'save_sample', default=False, help='save the trajectories or not')
@@ -71,21 +75,39 @@ def get_task_name(args):
 def main(args):
     U.make_session(num_cpu=1).__enter__()
     set_global_seeds(args.seed)
-    env = gym.make(args.env_id)
+    env = robosuite.make(args.env_id,
+            ignore_done=True,
+            use_camera_obs=False,
+            has_renderer=True,
+            control_freq=100,
+            gripper_visualization=True) # Switch from gym to robosuite
 
+    env = GymWrapper(env) # wrap in the gym environment
+    
+    # Task
+    task = 'evaluate'
+    # parser.add_argument('--task', type=str, choices=['train', 'evaluate', 'sample'], default='train')
+
+    # Expert Path
+    expert_path = '/home/mastercljohnson/Robotics/GAIL_Part/mod_surreal/robosuite/models/assets/demonstrations/Lift80trajs/models/model_1.npz' # path for 80 trajectories
+
+    #parser.add_argument('--expert_path', type=str, default='data/deterministic.trpo.Hopper.0.00.npz')
+    
     def policy_fn(name, ob_space, ac_space, reuse=False):
         return mlp_policy.MlpPolicy(name=name, ob_space=ob_space, ac_space=ac_space,
                                     reuse=reuse, hid_size=args.policy_hidden_size, num_hid_layers=2)
     env = bench.Monitor(env, logger.get_dir() and
                         osp.join(logger.get_dir(), "monitor.json"))
-    env.seed(args.seed)
+    
+    #env.seed(args.seed) # Sawyer does not have seed 
+
     gym.logger.setLevel(logging.WARN)
     task_name = get_task_name(args)
     args.checkpoint_dir = osp.join(args.checkpoint_dir, task_name)
     args.log_dir = osp.join(args.log_dir, task_name)
 
-    if args.task == 'train':
-        dataset = Mujoco_Dset(expert_path=args.expert_path, traj_limitation=args.traj_limitation)
+    if task == 'train':
+        dataset = Mujoco_Dset(expert_path=expert_path, traj_limitation=args.traj_limitation)
         reward_giver = TransitionClassifier(env, args.adversary_hidden_size, entcoeff=args.adversary_entcoeff)
         train(env,
               args.seed,
@@ -104,15 +126,24 @@ def main(args):
               args.BC_max_iter,
               task_name
               )
-    elif args.task == 'evaluate':
+    elif task == 'evaluate':
+        # Create the playback environment
+        play_env = robosuite.make(args.env_id,
+                ignore_done=True,
+                use_camera_obs=False,
+                has_renderer=True,
+                control_freq=100,
+                gripper_visualization=True) 
+
         runner(env,
-               policy_fn,
-               args.load_model_path,
-               timesteps_per_batch=1024,
-               number_trajs=10,
-               stochastic_policy=args.stochastic_policy,
-               save=args.save_sample
-               )
+                play_env,
+                policy_fn,
+                args.load_model_path,
+                timesteps_per_batch=10240, # Change time step per batch to be more reasonable
+                number_trajs=1, # change from 10 to 1 for evaluation
+                stochastic_policy=args.stochastic_policy,
+                save=args.save_sample
+                )
     else:
         raise NotImplementedError
     env.close()
@@ -137,7 +168,7 @@ def train(env, seed, policy_fn, reward_giver, dataset, algo,
             logger.set_level(logger.DISABLED)
         workerseed = seed + 10000 * MPI.COMM_WORLD.Get_rank()
         set_global_seeds(workerseed)
-        env.seed(workerseed)
+        #env.seed(workerseed) # removed since SawyerLift doesnt have seed
         trpo_mpi.learn(env, policy_fn, reward_giver, dataset, rank,
                        pretrained=pretrained, pretrained_weight=pretrained_weight,
                        g_step=g_step, d_step=d_step,
@@ -154,7 +185,7 @@ def train(env, seed, policy_fn, reward_giver, dataset, algo,
         raise NotImplementedError
 
 
-def runner(env, policy_func, load_model_path, timesteps_per_batch, number_trajs,
+def runner(env, play_env, policy_func, load_model_path, timesteps_per_batch, number_trajs,
            stochastic_policy, save=False, reuse=False):
 
     # Setup network
@@ -162,22 +193,47 @@ def runner(env, policy_func, load_model_path, timesteps_per_batch, number_trajs,
     ob_space = env.observation_space
     ac_space = env.action_space
     pi = policy_func("pi", ob_space, ac_space, reuse=reuse)
-    U.initialize()
-    # Prepare for rollouts
-    # ----------------------------------------
-    U.load_variables(load_model_path)
 
-    obs_list = []
-    acs_list = []
-    len_list = []
-    ret_list = []
-    for _ in tqdm(range(number_trajs)):
-        traj = traj_1_generator(pi, env, timesteps_per_batch, stochastic=stochastic_policy)
-        obs, acs, ep_len, ep_ret = traj['ob'], traj['ac'], traj['ep_len'], traj['ep_ret']
-        obs_list.append(obs)
-        acs_list.append(acs)
-        len_list.append(ep_len)
-        ret_list.append(ep_ret)
+    # Hack for loading policies using tensorflow
+    init_op = tf.compat.v1.global_variables_initializer()
+    saver = tf.compat.v1.train.Saver(max_to_keep=5)
+    with tf.compat.v1.Session() as sess:
+        sess.run(init_op)
+        # Load Checkpoint
+        ckpt = tf.compat.v1.train.get_checkpoint_state('./checkpoint/trpo_gail.transition_limitation_-1.SawyerLift.g_step_3.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/')
+        saver.restore(sess, ckpt.model_checkpoint_path)
+    
+        #U.initialize()
+        # Prepare for rollouts
+        # ----------------------------------------
+        #U.load_variables(load_model_path)
+
+
+        obs_list = []
+        acs_list = []
+        len_list = []
+        ret_list = []
+
+        sims_list = [] # For simulations
+
+        for _ in tqdm(range(number_trajs)):
+            traj = traj_1_generator(pi, env, timesteps_per_batch, stochastic=stochastic_policy)
+            obs, acs, ep_len, ep_ret = traj['ob'], traj['ac'], traj['ep_len'], traj['ep_ret']
+            sims = traj["sims"]# for simulations
+            obs_list.append(obs)
+            sims_list.append(sims)
+            acs_list.append(acs)
+            len_list.append(ep_len)
+            ret_list.append(ep_ret)
+
+            # For env sim playback
+            for state_sim in sims:
+                play_env.sim.set_state_from_flattened(state_sim)
+                play_env.sim.forward()
+                play_env.render()
+                #time.sleep(0.005)
+                #print("state")
+
     if stochastic_policy:
         print('stochastic policy:')
     else:
@@ -210,11 +266,17 @@ def traj_1_generator(pi, env, horizon, stochastic):
     news = []
     acs = []
 
+    # Create a sim storage for simulating such trajectory
+    sims = []
+
     while True:
         ac, vpred = pi.act(stochastic, ob)
         obs.append(ob)
         news.append(new)
         acs.append(ac)
+
+        # For simulation playback
+        sims.append( env.sim.get_state().flatten() ) # Only works with robosuite environment
 
         ob, rew, new, _ = env.step(ac)
         rews.append(rew)
@@ -226,11 +288,12 @@ def traj_1_generator(pi, env, horizon, stochastic):
         t += 1
 
     obs = np.array(obs)
+    sims = np.array(sims) # for simulations
     rews = np.array(rews)
     news = np.array(news)
     acs = np.array(acs)
     traj = {"ob": obs, "rew": rews, "new": news, "ac": acs,
-            "ep_ret": cur_ep_ret, "ep_len": cur_ep_len}
+            "ep_ret": cur_ep_ret, "ep_len": cur_ep_len, "sims": sims,}
     return traj
 
 
