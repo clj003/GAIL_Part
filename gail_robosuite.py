@@ -89,7 +89,7 @@ def main(args):
     # parser.add_argument('--task', type=str, choices=['train', 'evaluate', 'sample'], default='train')
 
     # Expert Path
-    expert_path = '/home/mastercljohnson/Robotics/GAIL_Part/mod_surreal/robosuite/models/assets/demonstrations/Lift80trajs/models/model_1.npz' # path for 80 trajectories
+    expert_path = '/home/mastercljohnson/Robotics/GAIL_Part/mod_surreal/robosuite/models/assets/demonstrations/reshapetest/models/model_1.npz' # path for 80 trajectories
 
     #parser.add_argument('--expert_path', type=str, default='data/deterministic.trpo.Hopper.0.00.npz')
     
@@ -108,6 +108,11 @@ def main(args):
 
     if task == 'train':
         dataset = Mujoco_Dset(expert_path=expert_path, traj_limitation=args.traj_limitation)
+
+        # Check dimensions of the dataset
+        #print("dimension of inputs", dataset.dset.inputs.shape) # dims seem correct
+        #print("dimension of inputs", dataset.dset.labels.shape) # dims seem correct
+
         reward_giver = TransitionClassifier(env, args.adversary_hidden_size, entcoeff=args.adversary_entcoeff)
         train(env,
               args.seed,
