@@ -85,11 +85,11 @@ def main(args):
     env = GymWrapper(env) # wrap in the gym environment
     
     # Task
-    task = 'evaluate'
+    task = 'train'
     # parser.add_argument('--task', type=str, choices=['train', 'evaluate', 'sample'], default='train')
 
     # Expert Path
-    expert_path = '/home/mastercljohnson/Robotics/GAIL_Part/mod_surreal/robosuite/models/assets/demonstrations/reshapetest/models/model_1.npz' # path for 80 trajectories
+    expert_path = '/home/mastercljohnson/Robotics/GAIL_Part/mod_surreal/robosuite/models/assets/demonstrations/3trajsss/combined/combined_0.npz' # path for 80 trajectories
 
     #parser.add_argument('--expert_path', type=str, default='data/deterministic.trpo.Hopper.0.00.npz')
     
