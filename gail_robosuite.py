@@ -11,6 +11,8 @@ from tqdm import tqdm
 import numpy as np
 import gym
 
+import os
+
 from baselines.gail import mlp_policy
 from baselines.common import set_global_seeds, tf_util as U
 from baselines.common.misc_util import boolean_flag
@@ -32,27 +34,27 @@ def argsparser():
     parser.add_argument('--env_id', help='environment ID', default='SawyerLift') # Default to SawyerLift
     parser.add_argument('--seed', help='RNG seed', type=int, default=0)
     parser.add_argument('--checkpoint_dir', help='the directory to save model', default='checkpoint')
-    parser.add_argument('--log_dir', help='the directory to save log file', default='log')
+    parser.add_argument('--log_dir', help='the directory to save log file', default='./log')
     parser.add_argument('--load_model_path', help='if provided, load the model', type=str, default=None)
     # for evaluatation
     boolean_flag(parser, 'stochastic_policy', default=False, help='use stochastic/deterministic policy to evaluate')
     boolean_flag(parser, 'save_sample', default=False, help='save the trajectories or not')
     #  Mujoco Dataset Configuration
-    parser.add_argument('--traj_limitation', type=int, default=-1)
+    parser.add_argument('--traj_limitation', type=int, default=3000) # change from -1 to 3000
     # Optimization Configuration
     parser.add_argument('--g_step', help='number of steps to train policy in each epoch', type=int, default=3)
-    parser.add_argument('--d_step', help='number of steps to train discriminator in each epoch', type=int, default=1)
+    parser.add_argument('--d_step', help='number of steps to train discriminator in each epoch', type=int, default=1) # changed def from 1 to 2
     # Network Configuration (Using MLP Policy)
     parser.add_argument('--policy_hidden_size', type=int, default=100)
     parser.add_argument('--adversary_hidden_size', type=int, default=100)
     # Algorithms Configuration
     parser.add_argument('--algo', type=str, choices=['trpo', 'ppo'], default='trpo')
     parser.add_argument('--max_kl', type=float, default=0.01)
-    parser.add_argument('--policy_entcoeff', help='entropy coefficiency of policy', type=float, default=0)
-    parser.add_argument('--adversary_entcoeff', help='entropy coefficiency of discriminator', type=float, default=1e-3)
+    parser.add_argument('--policy_entcoeff', help='entropy coefficiency of policy', type=float, default=0) # notice policy is trained with entropy 0, lets change this to 0.5, and train to see results
+    parser.add_argument('--adversary_entcoeff', help='entropy coefficiency of discriminator', type=float, default=1e-3) # defaults is 1e-3
     # Traing Configuration
-    parser.add_argument('--save_per_iter', help='save model every xx iterations', type=int, default=100)
-    parser.add_argument('--num_timesteps', help='number of timesteps per episode', type=int, default=5e6)
+    parser.add_argument('--save_per_iter', help='save model every xx iterations', type=int, default=50)
+    parser.add_argument('--num_timesteps', help='number of timesteps per episode', type=int, default=7.5e9) # changed to 5e6
     # Behavior Cloning
     boolean_flag(parser, 'pretrained', default=False, help='Use BC to pretrain')
     parser.add_argument('--BC_max_iter', help='Max iteration for training BC', type=int, default=1e4)
@@ -83,13 +85,15 @@ def main(args):
             gripper_visualization=True) # Switch from gym to robosuite
 
     env = GymWrapper(env) # wrap in the gym environment
+
     
     # Task
     task = 'train'
+    #task = 'evaluate'
     # parser.add_argument('--task', type=str, choices=['train', 'evaluate', 'sample'], default='train')
 
     # Expert Path
-    expert_path = '/home/mastercljohnson/Robotics/GAIL_Part/mod_surreal/robosuite/models/assets/demonstrations/3trajsss/combined/combined_0.npz' # path for 80 trajectories
+    expert_path = '/home/mastercljohnson/Robotics/GAIL_Part/mod_surreal/robosuite/models/assets/demonstrations/100trajs/combined/combined_0.npz' # path for 100 trajectories
 
     #parser.add_argument('--expert_path', type=str, default='data/deterministic.trpo.Hopper.0.00.npz')
     
@@ -105,6 +109,13 @@ def main(args):
     task_name = get_task_name(args)
     args.checkpoint_dir = osp.join(args.checkpoint_dir, task_name)
     args.log_dir = osp.join(args.log_dir, task_name)
+
+    #if not os.path.isdir(args.log_dir):
+    #    os.makedirs(args.log_dir)
+
+    #print("log_directories: ",args.log_dir)
+    
+    logger.log("environment action space range: ", env.action_space) #logging the action space
 
     if task == 'train':
         dataset = Mujoco_Dset(expert_path=expert_path, traj_limitation=args.traj_limitation)
@@ -138,13 +149,15 @@ def main(args):
                 use_camera_obs=False,
                 has_renderer=True,
                 control_freq=100,
-                gripper_visualization=True) 
+                gripper_visualization=True)
+
+        #play_env.viewer.set_camera(camera_id=2) # Switch views for eval
 
         runner(env,
                 play_env,
                 policy_fn,
                 args.load_model_path,
-                timesteps_per_batch=10240, # Change time step per batch to be more reasonable
+                timesteps_per_batch=3000, # Change time step per batch to be more reasonable
                 number_trajs=1, # change from 10 to 1 for evaluation
                 stochastic_policy=args.stochastic_policy,
                 save=args.save_sample
@@ -165,6 +178,10 @@ def train(env, seed, policy_fn, reward_giver, dataset, algo,
         pretrained_weight = behavior_clone.learn(env, policy_fn, dataset,
                                                  max_iters=BC_max_iter)
 
+    # These are initialized to the same thing always so good
+    #logger.log("all positions: \n", env.reset() ) # print the object positions
+    #logger.log("all positions: \n", env.reset() ) # print the object positions to see if same
+    
     if algo == 'trpo':
         from baselines.gail import trpo_mpi
         # Set up for MPI seed
@@ -181,9 +198,9 @@ def train(env, seed, policy_fn, reward_giver, dataset, algo,
                        max_timesteps=num_timesteps,
                        ckpt_dir=checkpoint_dir, log_dir=log_dir,
                        save_per_iter=save_per_iter,
-                       timesteps_per_batch=1024,
+                       timesteps_per_batch=10000, # changed b=timesteps per batch for scaled env
                        max_kl=0.01, cg_iters=10, cg_damping=0.1,
-                       gamma=0.995, lam=0.97,
+                       gamma=0.995, lam=0.97, # originally 0.97
                        vf_iters=5, vf_stepsize=1e-3,
                        task_name=task_name)
     else:
@@ -205,7 +222,7 @@ def runner(env, play_env, policy_func, load_model_path, timesteps_per_batch, num
     with tf.compat.v1.Session() as sess:
         sess.run(init_op)
         # Load Checkpoint
-        ckpt = tf.compat.v1.train.get_checkpoint_state('./checkpoint/trpo_gail.transition_limitation_-1.SawyerLift.g_step_3.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/')
+        ckpt = tf.compat.v1.train.get_checkpoint_state('./checkpoint/trpo_gail.transition_limitation_3000.SawyerLift.g_step_3.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/')
         saver.restore(sess, ckpt.model_checkpoint_path)
     
         #U.initialize()
@@ -234,6 +251,7 @@ def runner(env, play_env, policy_func, load_model_path, timesteps_per_batch, num
             # For env sim playback
             for state_sim in sims:
                 play_env.sim.set_state_from_flattened(state_sim)
+                #print("Action list to see if any go out of range:", acs) #clip actions
                 play_env.sim.forward()
                 play_env.render()
                 #time.sleep(0.005)
@@ -262,6 +280,9 @@ def traj_1_generator(pi, env, horizon, stochastic):
     new = True  # marks if we're on first timestep of an episode
 
     ob = env.reset()
+
+    #env.set_robot_joint_positions([0, -1.18, 0.00, 2.18, 0.00, 0.57, 1.5708]) # to match collected trajectories
+    
     cur_ep_ret = 0  # return in current episode
     cur_ep_len = 0  # len of current episode
 
