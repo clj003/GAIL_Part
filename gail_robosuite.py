@@ -13,7 +13,7 @@ import gym
 
 import os
 
-from baselines.gail import mlp_policy
+from baselines.gail import mlp_policy_sawyer # changed to use other construction
 from baselines.common import set_global_seeds, tf_util as U
 from baselines.common.misc_util import boolean_flag
 from baselines import bench
@@ -40,7 +40,7 @@ def argsparser():
     boolean_flag(parser, 'stochastic_policy', default=False, help='use stochastic/deterministic policy to evaluate')
     boolean_flag(parser, 'save_sample', default=False, help='save the trajectories or not')
     #  Mujoco Dataset Configuration
-    parser.add_argument('--traj_limitation', type=int, default=3000) # change from -1 to 3000
+    parser.add_argument('--traj_limitation', type=int, default=-1) # change from -1 to 3000
     # Optimization Configuration
     parser.add_argument('--g_step', help='number of steps to train policy in each epoch', type=int, default=3)
     parser.add_argument('--d_step', help='number of steps to train discriminator in each epoch', type=int, default=1) # changed def from 1 to 2
@@ -53,7 +53,7 @@ def argsparser():
     parser.add_argument('--policy_entcoeff', help='entropy coefficiency of policy', type=float, default=0) # notice policy is trained with entropy 0, lets change this to 0.5, and train to see results
     parser.add_argument('--adversary_entcoeff', help='entropy coefficiency of discriminator', type=float, default=1e-3) # defaults is 1e-3
     # Traing Configuration
-    parser.add_argument('--save_per_iter', help='save model every xx iterations', type=int, default=50)
+    parser.add_argument('--save_per_iter', help='save model every xx iterations', type=int, default=30)
     parser.add_argument('--num_timesteps', help='number of timesteps per episode', type=int, default=7.5e9) # changed to 5e6
     # Behavior Cloning
     boolean_flag(parser, 'pretrained', default=False, help='Use BC to pretrain')
@@ -86,6 +86,8 @@ def main(args):
 
     env = GymWrapper(env) # wrap in the gym environment
 
+    # Environment joints should be clipped at 1 and -1 for sawyer
+
     
     # Task
     task = 'train'
@@ -93,12 +95,13 @@ def main(args):
     # parser.add_argument('--task', type=str, choices=['train', 'evaluate', 'sample'], default='train')
 
     # Expert Path
-    expert_path = '/home/mastercljohnson/Robotics/GAIL_Part/mod_surreal/robosuite/models/assets/demonstrations/100trajs/combined/combined_0.npz' # path for 100 trajectories
+    #expert_path = '/home/mastercljohnson/Robotics/GAIL_Part/mod_surreal/robosuite/models/assets/demonstrations/ac100/combined/combined_0.npz' # path for 100 trajectories
+    expert_path = '/home/mastercljohnson/Robotics/GAIL_Part/mod_surreal/robosuite/models/assets/demonstrations/1trajstry/combined/combined_0.npz' # path for 100 trajectories
 
     #parser.add_argument('--expert_path', type=str, default='data/deterministic.trpo.Hopper.0.00.npz')
     
     def policy_fn(name, ob_space, ac_space, reuse=False):
-        return mlp_policy.MlpPolicy(name=name, ob_space=ob_space, ac_space=ac_space,
+        return mlp_policy_sawyer.MlpPolicy(name=name, ob_space=ob_space, ac_space=ac_space,
                                     reuse=reuse, hid_size=args.policy_hidden_size, num_hid_layers=2)
     env = bench.Monitor(env, logger.get_dir() and
                         osp.join(logger.get_dir(), "monitor.json"))
@@ -191,6 +194,8 @@ def train(env, seed, policy_fn, reward_giver, dataset, algo,
         workerseed = seed + 10000 * MPI.COMM_WORLD.Get_rank()
         set_global_seeds(workerseed)
         #env.seed(workerseed) # removed since SawyerLift doesnt have seed
+
+        # Adjustin trpo stuff
         trpo_mpi.learn(env, policy_fn, reward_giver, dataset, rank,
                        pretrained=pretrained, pretrained_weight=pretrained_weight,
                        g_step=g_step, d_step=d_step,
@@ -198,8 +203,8 @@ def train(env, seed, policy_fn, reward_giver, dataset, algo,
                        max_timesteps=num_timesteps,
                        ckpt_dir=checkpoint_dir, log_dir=log_dir,
                        save_per_iter=save_per_iter,
-                       timesteps_per_batch=10000, # changed b=timesteps per batch for scaled env
-                       max_kl=0.01, cg_iters=10, cg_damping=0.1,
+                       timesteps_per_batch=15000, # changed b=timesteps per batch for scaled env from 10000
+                       max_kl=0.001, cg_iters=50, cg_damping=0.1, # maxkl was 0.01, cg iters was 10, cg_dampening from 0.1 
                        gamma=0.995, lam=0.97, # originally 0.97
                        vf_iters=5, vf_stepsize=1e-3,
                        task_name=task_name)
@@ -222,7 +227,7 @@ def runner(env, play_env, policy_func, load_model_path, timesteps_per_batch, num
     with tf.compat.v1.Session() as sess:
         sess.run(init_op)
         # Load Checkpoint
-        ckpt = tf.compat.v1.train.get_checkpoint_state('./checkpoint/trpo_gail.transition_limitation_3000.SawyerLift.g_step_3.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/')
+        ckpt = tf.compat.v1.train.get_checkpoint_state('./checkpoint/trpo_gail.transition_limitation_-1.SawyerLift.g_step_3.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/')
         saver.restore(sess, ckpt.model_checkpoint_path)
     
         #U.initialize()
@@ -249,12 +254,14 @@ def runner(env, play_env, policy_func, load_model_path, timesteps_per_batch, num
             ret_list.append(ep_ret)
 
             # For env sim playback
+            ii = 0
             for state_sim in sims:
                 play_env.sim.set_state_from_flattened(state_sim)
-                #print("Action list to see if any go out of range:", acs) #clip actions
+                print("Action to see if any go out of range:", acs[ii]) #clip actions
+                ii += 1
                 play_env.sim.forward()
                 play_env.render()
-                #time.sleep(0.005)
+                time.sleep(0.05)
                 #print("state")
 
     if stochastic_policy:
