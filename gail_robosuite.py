@@ -38,11 +38,11 @@ def argsparser():
     parser.add_argument('--load_model_path', help='if provided, load the model', type=str, default=None)
     # for evaluatation
     boolean_flag(parser, 'stochastic_policy', default=False, help='use stochastic/deterministic policy to evaluate')
-    boolean_flag(parser, 'save_sample', default=False, help='save the trajectories or not')
+    boolean_flag(parser, 'save_sample', default=True, help='save the trajectories or not') # setting the save trajectories to true for classifier
     #  Mujoco Dataset Configuration
-    parser.add_argument('--traj_limitation', type=int, default=-1) # change from -1 to 3000
+    parser.add_argument('--traj_limitation', type=int, default=3000) # change from -1 to 3000
     # Optimization Configuration
-    parser.add_argument('--g_step', help='number of steps to train policy in each epoch', type=int, default=3)
+    parser.add_argument('--g_step', help='number of steps to train policy in each epoch', type=int, default=1)
     parser.add_argument('--d_step', help='number of steps to train discriminator in each epoch', type=int, default=1) # changed def from 1 to 2
     # Network Configuration (Using MLP Policy)
     parser.add_argument('--policy_hidden_size', type=int, default=100)
@@ -54,7 +54,7 @@ def argsparser():
     parser.add_argument('--adversary_entcoeff', help='entropy coefficiency of discriminator', type=float, default=1e-3) # defaults is 1e-3
     # Traing Configuration
     parser.add_argument('--save_per_iter', help='save model every xx iterations', type=int, default=30)
-    parser.add_argument('--num_timesteps', help='number of timesteps per episode', type=int, default=7.5e9) # changed to 5e6
+    parser.add_argument('--num_timesteps', help='number of timesteps per episode', type=int, default=2.36e10) # changed to 5e6
     # Behavior Cloning
     boolean_flag(parser, 'pretrained', default=False, help='Use BC to pretrain')
     parser.add_argument('--BC_max_iter', help='Max iteration for training BC', type=int, default=1e4)
@@ -82,7 +82,21 @@ def main(args):
             use_camera_obs=False,
             has_renderer=True,
             control_freq=100,
-            gripper_visualization=True) # Switch from gym to robosuite
+            gripper_visualization=True,
+            reward_shaping=True,
+            #box_pos = [0.63522776, -0.3287869, 0.82162434], # shift2
+            #box_quat=[0.6775825618903728, 0, 0, 0.679425538604203], # shift2
+            #box_pos = [0.23522776, 0.2287869, 0.82162434], #shift3
+            #box_quat=[0.3775825618903728, 0, 0, 0.679425538604203], #shift3
+            #box_pos = [0.53522776, 0.3287869, 0.82162434], #shift4
+            #box_quat=[0.5775825618903728, 0, 0, 0.679425538604203], #shift4
+            #box_pos = [0.53522776, 0.1287869, 0.82162434], #shift5 
+            #box_quat=[0.4775825618903728, 0, 0, 0.679425538604203], #shift5
+            #box_pos = [0.48522776, -0.187869, 0.82162434], #shift6
+            #box_quat=[0.8775825618903728, 0, 0, 0.679425538604203], #shift6
+            box_pos = [0.43522776, -0.367869, 0.82162434], #shift7
+            box_quat=[0.2775825618903728, 0, 0, 0.679425538604203], #shift7
+            ) # Switch from gym to robosuite, also add reward shaping to see reach goal
 
     env = GymWrapper(env) # wrap in the gym environment
 
@@ -90,13 +104,13 @@ def main(args):
 
     
     # Task
-    task = 'train'
-    #task = 'evaluate'
+    #task = 'train'
+    task = 'evaluate'
     # parser.add_argument('--task', type=str, choices=['train', 'evaluate', 'sample'], default='train')
 
     # Expert Path
     #expert_path = '/home/mastercljohnson/Robotics/GAIL_Part/mod_surreal/robosuite/models/assets/demonstrations/ac100/combined/combined_0.npz' # path for 100 trajectories
-    expert_path = '/home/mastercljohnson/Robotics/GAIL_Part/mod_surreal/robosuite/models/assets/demonstrations/1trajstry/combined/combined_0.npz' # path for 100 trajectories
+    expert_path = '/home/mastercljohnson/Robotics/GAIL_Part/mod_surreal/robosuite/models/assets/demonstrations/120_shift7/combined/combined_0.npz' # path for 100 trajectories
 
     #parser.add_argument('--expert_path', type=str, default='data/deterministic.trpo.Hopper.0.00.npz')
     
@@ -104,7 +118,7 @@ def main(args):
         return mlp_policy_sawyer.MlpPolicy(name=name, ob_space=ob_space, ac_space=ac_space,
                                     reuse=reuse, hid_size=args.policy_hidden_size, num_hid_layers=2)
     env = bench.Monitor(env, logger.get_dir() and
-                        osp.join(logger.get_dir(), "monitor.json"))
+                        osp.join(logger.get_dir(), "monitor.json"), allow_early_resets=True)
     
     #env.seed(args.seed) # Sawyer does not have seed 
 
@@ -116,7 +130,7 @@ def main(args):
     #if not os.path.isdir(args.log_dir):
     #    os.makedirs(args.log_dir)
 
-    #print("log_directories: ",args.log_dir)
+    logger.log("log_directories: ",args.log_dir)
     
     logger.log("environment action space range: ", env.action_space) #logging the action space
 
@@ -152,7 +166,20 @@ def main(args):
                 use_camera_obs=False,
                 has_renderer=True,
                 control_freq=100,
-                gripper_visualization=True)
+                gripper_visualization=True,
+                #box_pos = [0.63522776, -0.3287869, 0.82162434], # shift2
+                #box_quat=[0.6775825618903728, 0, 0, 0.679425538604203], # shift2
+                #box_pos = [0.23522776, 0.2287869, 0.82162434], #shift3
+                #box_quat=[0.3775825618903728, 0, 0, 0.679425538604203], #shift3
+                #box_pos = [0.53522776, 0.3287869, 0.82162434], #shift4
+                #box_quat=[0.5775825618903728, 0, 0, 0.679425538604203], #shift4
+                #box_pos = [0.53522776, 0.1287869, 0.82162434], #shift5 
+                #box_quat=[0.4775825618903728, 0, 0, 0.679425538604203], #shift5
+                #box_pos = [0.48522776, -0.187869, 0.82162434], #shift6
+                #box_quat=[0.8775825618903728, 0, 0, 0.679425538604203], #shift6
+                box_pos = [0.43522776, -0.367869, 0.82162434], #shift7
+                box_quat=[0.2775825618903728, 0, 0, 0.679425538604203], #shift7
+                )
 
         #play_env.viewer.set_camera(camera_id=2) # Switch views for eval
 
@@ -160,8 +187,8 @@ def main(args):
                 play_env,
                 policy_fn,
                 args.load_model_path,
-                timesteps_per_batch=3000, # Change time step per batch to be more reasonable
-                number_trajs=1, # change from 10 to 1 for evaluation
+                timesteps_per_batch=4000, # Change time step per batch to be more reasonable
+                number_trajs=20, # change from 10 to 1 for evaluation
                 stochastic_policy=args.stochastic_policy,
                 save=args.save_sample
                 )
@@ -227,7 +254,8 @@ def runner(env, play_env, policy_func, load_model_path, timesteps_per_batch, num
     with tf.compat.v1.Session() as sess:
         sess.run(init_op)
         # Load Checkpoint
-        ckpt = tf.compat.v1.train.get_checkpoint_state('./checkpoint/trpo_gail.transition_limitation_-1.SawyerLift.g_step_3.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/')
+        #ckpt = tf.compat.v1.train.get_checkpoint_state('./reach_and_grasp_weights/reach_one/trpo_gail.transition_limitation_2100.SawyerLift.g_step_1.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/')
+        ckpt = tf.compat.v1.train.get_checkpoint_state('./checkpoint/trpo_gail.transition_limitation_3000.SawyerLift.g_step_1.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/')
         saver.restore(sess, ckpt.model_checkpoint_path)
     
         #U.initialize()
@@ -257,11 +285,12 @@ def runner(env, play_env, policy_func, load_model_path, timesteps_per_batch, num
             ii = 0
             for state_sim in sims:
                 play_env.sim.set_state_from_flattened(state_sim)
-                print("Action to see if any go out of range:", acs[ii]) #clip actions
+                #print("Action to see if any go out of range:", acs[ii]) #clip actions
+                print("ii index", ii) #clip actions
                 ii += 1
                 play_env.sim.forward()
                 play_env.render()
-                time.sleep(0.05)
+                #time.sleep(0.05)
                 #print("state")
 
     if stochastic_policy:
@@ -269,9 +298,13 @@ def runner(env, play_env, policy_func, load_model_path, timesteps_per_batch, num
     else:
         print('deterministic policy:')
     if save:
-        filename = load_model_path.split('/')[-1] + '.' + env.spec.id
+        #filename = load_model_path.split('/')[-1] + '.' + env.spec.id
+        filename =  "SawLift_01" + "_class_trajs_test"
+        # Modify for the classifier
         np.savez(filename, obs=np.array(obs_list), acs=np.array(acs_list),
                  lens=np.array(len_list), rets=np.array(ret_list))
+        #np.savez(filename, obs=np.array(obs_list), acs=np.array(acs_list),
+        #         lens=np.array(len_list), rets=np.array(ret_list))
     avg_len = sum(len_list)/len(len_list)
     avg_ret = sum(ret_list)/len(ret_list)
     print("Average length:", avg_len)
@@ -287,6 +320,8 @@ def traj_1_generator(pi, env, horizon, stochastic):
     new = True  # marks if we're on first timestep of an episode
 
     ob = env.reset()
+
+    #print("the first state :) ", ob)
 
     #env.set_robot_joint_positions([0, -1.18, 0.00, 2.18, 0.00, 0.57, 1.5708]) # to match collected trajectories
     
@@ -312,11 +347,13 @@ def traj_1_generator(pi, env, horizon, stochastic):
         sims.append( env.sim.get_state().flatten() ) # Only works with robosuite environment
 
         ob, rew, new, _ = env.step(ac)
+        print(ob)
         rews.append(rew)
 
         cur_ep_ret += rew
         cur_ep_len += 1
         if new or t >= horizon:
+            #print("last state: ", ob)
             break
         t += 1
 

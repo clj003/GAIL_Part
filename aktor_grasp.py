@@ -21,6 +21,15 @@ from baselines import logger
 from baselines.gail.dataset.mujoco_dset import Mujoco_Dset
 from baselines.gail.adversary import TransitionClassifier
 
+# For acktr
+from baselines.old_acktr.acktr_cont import old_acktr_learn
+from baselines.old_acktr.policies import GaussianMlpPolicy
+from baselines.old_acktr.value_functions import NeuralNetValueFunction
+
+import baselines.common as common
+from baselines.common.filters import ZFilter
+
+
 # Integration with robosuite
 import robosuite
 from robosuite.wrappers import GymWrapper
@@ -40,7 +49,7 @@ def argsparser():
     boolean_flag(parser, 'stochastic_policy', default=False, help='use stochastic/deterministic policy to evaluate')
     boolean_flag(parser, 'save_sample', default=False, help='save the trajectories or not')
     #  Mujoco Dataset Configuration
-    parser.add_argument('--traj_limitation', type=int, default=2000) # change from -1 to 3000
+    parser.add_argument('--traj_limitation', type=int, default=1500) # change from -1 to 3000
     # Optimization Configuration
     parser.add_argument('--g_step', help='number of steps to train policy in each epoch', type=int, default=1)
     parser.add_argument('--d_step', help='number of steps to train discriminator in each epoch', type=int, default=1) # changed def from 1 to 2
@@ -54,7 +63,7 @@ def argsparser():
     parser.add_argument('--adversary_entcoeff', help='entropy coefficiency of discriminator', type=float, default=1e-3) # defaults is 1e-3
     # Traing Configuration
     parser.add_argument('--save_per_iter', help='save model every xx iterations', type=int, default=30)
-    parser.add_argument('--num_timesteps', help='number of timesteps per episode', type=int, default=2.36e10) # changed to 5e6
+    parser.add_argument('--num_timesteps', help='number of timesteps per episode', type=int, default=1e9) # changed to 5e6
     # Behavior Cloning
     boolean_flag(parser, 'pretrained', default=False, help='Use BC to pretrain')
     parser.add_argument('--BC_max_iter', help='Max iteration for training BC', type=int, default=1e4)
@@ -62,15 +71,15 @@ def argsparser():
 
 
 def get_task_name(args):
-    task_name = "grasp"+ args.algo + "_gail."
-    if args.pretrained:
-        task_name += "with_pretrained."
+    task_name = "grasp"+ "_acktr_rl."
+    #if args.pretrained:
+    #    task_name += "with_pretrained."
     if args.traj_limitation != np.inf:
         task_name += "transition_limitation_%d." % args.traj_limitation
     task_name += args.env_id.split("-")[0]
-    task_name = task_name + ".g_step_" + str(args.g_step) + ".d_step_" + str(args.d_step) + \
-        ".policy_entcoeff_" + str(args.policy_entcoeff) + ".adversary_entcoeff_" + str(args.adversary_entcoeff)
-    task_name += ".seed_" + str(args.seed)
+    #task_name = task_name + ".g_step_" + str(args.g_step) + ".d_step_" + str(args.d_step) + \
+    #    ".policy_entcoeff_" + str(args.policy_entcoeff) + ".adversary_entcoeff_" + str(args.adversary_entcoeff)
+    #task_name += ".seed_" + str(args.seed)
     return task_name
 
 
@@ -84,24 +93,25 @@ def main(args):
             control_freq=100,
             gripper_visualization=True,
             reward_shaping=True,
-            box_pos = [0.63522776, -0.3287869, 0.82162434], # shift2
-            box_quat=[0.6775825618903728, 0, 0, 0.679425538604203], # shift2
+            #box_pos = [0.63522776, -0.3287869, 0.82162434], # shift2
+            #box_quat=[0.6775825618903728, 0, 0, 0.679425538604203], # shift2
+            box_pos = [0.23522776, 0.2287869, 0.82162434], #shift3
+            box_quat=[0.3775825618903728, 0, 0, 0.679425538604203], #shift3
+            #box_pos = [0.53522776, 0.3287869, 0.82162434], #shift4
+            #box_quat=[0.5775825618903728, 0, 0, 0.679425538604203], #shift4
             ) # Switch from gym to robosuite, also add reward shaping to see reach goal
 
     env = GymWrapper(env) # wrap in the gym environment
 
-    #task = 'train'
-    task = 'evaluate'
+    task = 'train'
+    #task = 'evaluate'
 
-    # Expert Path
-    expert_path = '/home/mastercljohnson/Robotics/GAIL_Part/mod_surreal/robosuite/models/assets/demonstrations/150_grasp_shift2/combined/combined_0.npz' # path for 100 trajectories
-    #parser.add_argument('--expert_path', type=str, default='data/deterministic.trpo.Hopper.0.00.npz')
     
     def policy_fn(name, ob_space, ac_space, reuse=False):
         return mlp_policy_sawyer.MlpPolicy(name=name, ob_space=ob_space, ac_space=ac_space,
                                     reuse=reuse, hid_size=args.policy_hidden_size, num_hid_layers=2)
-    env = bench.Monitor(env, logger.get_dir() and
-                        osp.join(logger.get_dir(), "monitor.json"), allow_early_resets=True)
+    #env = bench.Monitor(env, logger.get_dir() and
+    #                    osp.join(logger.get_dir(), "monitor.json"), allow_early_resets=True)
 
     # Note: taking away the bench monitor wrapping allows rendering
     
@@ -122,8 +132,12 @@ def main(args):
             has_renderer=True,
             control_freq=100,
             gripper_visualization=True,
-            box_pos = [0.63522776, -0.3287869, 0.82162434], # shift2
-            box_quat=[0.6775825618903728, 0, 0, 0.679425538604203], # shift2
+            #box_pos = [0.63522776, -0.3287869, 0.82162434], # shift2
+            #box_quat=[0.6775825618903728, 0, 0, 0.679425538604203], # shift2
+            box_pos = [0.23522776, 0.2287869, 0.82162434], #shift3
+            box_quat=[0.3775825618903728, 0, 0, 0.679425538604203], #shift3
+            #box_pos = [0.53522776, 0.3287869, 0.82162434], #shift4
+            #box_quat=[0.5775825618903728, 0, 0, 0.679425538604203], #shift4
             )
 
     play_env = GymWrapper(play_env)
@@ -146,72 +160,128 @@ def main(args):
     with tf.compat.v1.Session() as sess:
         sess.run(init_op)
         # Load Checkpoint
-        ckpt_path = './reach_shift2/trpo_gail.transition_limitation_2500.SawyerLift.g_step_1.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/'
+        ckpt_path = './reach_and_grasp_weights/reach_shift2/trpo_gail.transition_limitation_2500.SawyerLift.g_step_1.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/'
         ckpt = tf.compat.v1.train.get_checkpoint_state(ckpt_path)
         saver.restore(sess, ckpt.model_checkpoint_path)
         
         # Create the playback environment
     
-        _, _, last_ob, last_jpos = runner_1_traj(play_env,
+        _, _, last_ob, last_jpos, obs_array, jpos_array = runner_1_traj(play_env,
                 pi_reach,
                 None,
-                timesteps_per_batch=3500,
+                timesteps_per_batch=2500,
                 number_trajs=1,
                 stochastic_policy=args.stochastic_policy,
                 save=False
                 )
 
+    #obs_array = None
+    #jpos_array = None
+
+    print(last_jpos)
+    print(last_ob)
+
     if task =='train':
         play_env.close()
 
-        dataset = Mujoco_Dset(expert_path=expert_path, traj_limitation=args.traj_limitation)
+        #init_op2 = tf.compat.v1.global_variables_initializer()
+        
+        #sess2 = tf.compat.v1.Session(config=tf.ConfigProto())
+        #with tf.compat.v1.Session(config=tf.ConfigProto()) as sess2:
+        #sess2.run(init_op)
+        ob_dim = env.observation_space.shape[0]
+        ac_dim = env.action_space.shape[0]
+        #with tf.compat.v1.variable_scope("vf_aktr"):
+        vf = NeuralNetValueFunction(ob_dim, ac_dim)
+        #with tf.compat.v1.variable_scope("pi_aktr"):
+        policy = GaussianMlpPolicy(ob_dim, ac_dim)
 
+        #sess2.run(init_op2)
+        
+        old_acktr_learn(env, policy=policy, vf=vf,
+            gamma=0.99, lam=0.97, timesteps_per_batch=1500,
+            desired_kl=0.001,
+            num_timesteps=args.num_timesteps,
+            save_per_iter=args.save_per_iter,
+            ckpt_dir=args.checkpoint_dir,
+            traj_limitation=args.traj_limitation,
+            last_ob=obs_array,
+            last_jpos=jpos_array,
+            animate=True)
 
-        reward_giver = TransitionClassifier(env, args.adversary_hidden_size, entcoeff=args.adversary_entcoeff)
-        train_grasp(env,
-                last_ob,
-                last_jpos, 
-                args.seed,
-                policy_fn,
-                reward_giver,
-                dataset,
-                args.algo,
-                args.g_step,
-                args.d_step,
-                args.policy_entcoeff,
-                args.num_timesteps,
-                args.save_per_iter,
-                args.checkpoint_dir,
-                args.log_dir,
-                args.pretrained,
-                args.BC_max_iter,
-                task_name
-                )
+        env.close()
+
 
     elif task =='evaluate':
-        pi_grasp = policy_fn("pi_grasp", ob_space, ac_space, reuse=False)
+       # with tf.compat.v1.Session(config=tf.ConfigProto()):
+        ob_dim = env.observation_space.shape[0]
+        ac_dim = env.action_space.shape[0]
+        
+        #with tf.compat.v1.variable_scope("vf_aktr"):
+        eval_vf = NeuralNetValueFunction(ob_dim, ac_dim)
+        #with tf.compat.v1.variable_scope("pi_aktr"):
+        eval_policy = GaussianMlpPolicy(ob_dim, ac_dim)
+
         saver_2 = tf.compat.v1.train.Saver(max_to_keep=5)
-        with tf.compat.v1.Session() as sess:
-            sess.run(init_op)
-            ckpt_path_2 = './checkpoint/grasptrpo_gail.transition_limitation_2000.SawyerLift.g_step_1.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/' 
+        
+        #sess2 = tf.compat.v1.Session(config=tf.ConfigProto())
+        #with tf.compat.v1.Session(config=tf.ConfigProto()) as sess3:
+        with tf.compat.v1.Session() as sess3:
+            sess3.run(init_op)
+                    
+            ckpt_path_2 = './checkpoint/grasp_acktr_rl.transition_limitation_1500.SawyerLift' 
             ckpt_2 = tf.compat.v1.train.get_checkpoint_state(ckpt_path_2)
-            saver_2.restore(sess,ckpt_2.model_checkpoint_path)
+            saver_2.restore(sess3,ckpt_2.model_checkpoint_path)
 
             tt = 0
+
+            cum_rew = 0
+
             ob = last_ob
+            prev_ob = np.float32(np.zeros(ob.shape)) # check if indeed starts at all zeros
+
+            obfilter = ZFilter(play_env.observation_space.shape)
+
+            statsu = np.load("./checkpoint/grasp_acktr_rl.transition_limitation_1500.SawyerLift/filter_stats_22953000.npz")
+
+            print("load n: ", statsu["n"])
+            print("load M: ", statsu["M"])
+            print("load S: ", statsu["S"])
+
+            obfilter.rs._n = statsu["n"]
+            obfilter.rs._M = statsu["M"]
+            obfilter.rs._S = statsu["S"]
+
+            print("obf n: ", obfilter.rs._n)
+            print("obf M: ", obfilter.rs._M)
+            print("obf S: ", obfilter.rs._S)
+            
+            
+            ob = obfilter(ob)
 
             while True:
-                    ac, vpred = pi_grasp.act(False, ob)
-                    ob, rew, new, _ = play_env.step(ac)
+                s = np.concatenate([ob,prev_ob], -1) 
+                ac, _, _ = eval_policy.act(s)
+                
+                prev_ob = np.copy(ob)
+                
+                scaled_ac = env.action_space.low + (ac + 1.) * 0.5 * (env.action_space.high - env.action_space.low)
+                scaled_ac = np.clip(scaled_ac, play_env.action_space.low, play_env.action_space.high)
 
-                    play_env.render() # check the running in for the first part
-                    #logger.log("rendering for reach policy")
+                ob, rew, new, _ = play_env.step(scaled_ac)
 
-                    if new or tt >= args.traj_limitation:
-                        break
-                    tt += 1
+                ob = obfilter(ob)
 
+                cum_rew += rew
 
+                play_env.render() # check the running in for the first part
+                #logger.log("rendering for reach policy")
+
+                if new or tt >= args.traj_limitation:
+                    break
+                tt += 1
+                
+            print("Cumulative reward over session: " + str(cum_rew))
         
         play_env.close()
 
@@ -220,46 +290,6 @@ def main(args):
     env.close()
 
 
-def train_grasp(env, last_ob, last_jpos, seed, policy_fn, reward_giver, dataset, algo,
-          g_step, d_step, policy_entcoeff, num_timesteps, save_per_iter,
-          checkpoint_dir, log_dir, pretrained, BC_max_iter, task_name=None):
-
-    pretrained_weight = None
-    if pretrained and (BC_max_iter > 0):
-        # Pretrain with behavior cloning
-        from baselines.gail import behavior_clone
-        pretrained_weight = behavior_clone.learn(env, policy_fn, dataset,
-                                                 max_iters=BC_max_iter)
-
-    # These are initialized to the same thing always so good
-    #logger.log("all positions: \n", env.reset() ) # print the object positions
-    #logger.log("all positions: \n", env.reset() ) # print the object positions to see if same
-    
-    if algo == 'trpo':
-        from baselines.gail import grasp_trpo_mpi
-        # Set up for MPI seed
-        rank = MPI.COMM_WORLD.Get_rank()
-        if rank != 0:
-            logger.set_level(logger.DISABLED)
-        workerseed = seed + 10000 * MPI.COMM_WORLD.Get_rank()
-        set_global_seeds(workerseed)
-        #env.seed(workerseed) # removed since SawyerLift doesnt have seed
-
-        # Adjustin trpo stuff
-        grasp_trpo_mpi.learn(env, last_ob, last_jpos, runner_1_traj, policy_fn, reward_giver, dataset, rank,
-                       pretrained=pretrained, pretrained_weight=pretrained_weight,
-                       g_step=g_step, d_step=d_step,
-                       entcoeff=policy_entcoeff,
-                       max_timesteps=num_timesteps,
-                       ckpt_dir=checkpoint_dir, log_dir=log_dir,
-                       save_per_iter=save_per_iter,
-                       timesteps_per_batch=15000, # changed b=timesteps per batch for scaled env from 10000
-                       max_kl=0.001, cg_iters=50, cg_damping=0.1, # maxkl was 0.01, cg iters was 10, cg_dampening from 0.1 
-                       gamma=0.995, lam=0.97, # originally 0.97
-                       vf_iters=5, vf_stepsize=1e-3,
-                       task_name=task_name)
-    else:
-        raise NotImplementedError
 
 def runner_1_traj(env, pi_reach, load_model_path, timesteps_per_batch, number_trajs,
            stochastic_policy, save=False, reuse=False):
@@ -274,17 +304,19 @@ def runner_1_traj(env, pi_reach, load_model_path, timesteps_per_batch, number_tr
     acs_list = []
     len_list = []
     ret_list = []
+    jpos_list = []
 
     sims_list = [] # For simulations
 
     traj, last_ob, last_jpos = traj_1_generator(pi_reach, env, timesteps_per_batch, stochastic=stochastic_policy)
-    obs, acs, ep_len, ep_ret = traj['ob'], traj['ac'], traj['ep_len'], traj['ep_ret']
+    obs, acs, ep_len, ep_ret, jpos = traj['ob'], traj['ac'], traj['ep_len'], traj['ep_ret'], traj['jpos']
     sims = traj["sims"]# for simulations
     obs_list.append(obs)
     sims_list.append(sims)
     acs_list.append(acs)
     len_list.append(ep_len)
     ret_list.append(ep_ret)
+    jpos_list.append(jpos)
 
     # For env sim playback
     #ii = 0
@@ -312,7 +344,7 @@ def runner_1_traj(env, pi_reach, load_model_path, timesteps_per_batch, number_tr
 
     # Get the last joint positions to load for next part
     #last_jpos = env._get_observation() # just making sure its being loaded correctly
-    return avg_len, avg_ret, last_ob, last_jpos
+    return avg_len, avg_ret, last_ob, last_jpos, obs, jpos
 
 
 # Sample one trajectory (until trajectory end)
@@ -334,6 +366,7 @@ def traj_1_generator(pi_reach, env, horizon, stochastic):
     rews = []
     news = []
     acs = []
+    j_pos_a = []
 
     # Create a sim storage for simulating such trajectory
     sims = []
@@ -344,10 +377,13 @@ def traj_1_generator(pi_reach, env, horizon, stochastic):
         news.append(new)
         acs.append(ac)
 
+        j_pos_a.append(env._joint_positions) #joint position
+
         # For simulation playback
         sims.append( env.sim.get_state().flatten() ) # Only works with robosuite environment
 
         ob, rew, new, _ = env.step(ac)
+        #print(ob)
         rews.append(rew)
 
         env.render() # check the running in for the first part
@@ -366,8 +402,9 @@ def traj_1_generator(pi_reach, env, horizon, stochastic):
     rews = np.array(rews)
     news = np.array(news)
     acs = np.array(acs)
+    j_pos_a = np.array(j_pos_a)
     traj = {"ob": obs, "rew": rews, "new": news, "ac": acs,
-            "ep_ret": cur_ep_ret, "ep_len": cur_ep_len, "sims": sims,}
+            "ep_ret": cur_ep_ret, "ep_len": cur_ep_len, "sims": sims, "jpos": j_pos_a}
     return traj, ob, last_jpos
 
 
