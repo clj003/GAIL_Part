@@ -84,8 +84,8 @@ def main(args):
             control_freq=100,
             gripper_visualization=True,
             reward_shaping=True,
-            box_pos = [0.63522776, -0.3287869, 0.82162434], # shift2
-            box_quat=[0.6775825618903728, 0, 0, 0.679425538604203], # shift2
+            #box_pos = [0.63522776, -0.3287869, 0.82162434], # shift2
+            #box_quat=[0.6775825618903728, 0, 0, 0.679425538604203], # shift2
             ) # Switch from gym to robosuite, also add reward shaping to see reach goal
 
     env = GymWrapper(env) # wrap in the gym environment
@@ -122,8 +122,8 @@ def main(args):
             has_renderer=True,
             control_freq=100,
             gripper_visualization=True,
-            box_pos = [0.63522776, -0.3287869, 0.82162434], # shift2
-            box_quat=[0.6775825618903728, 0, 0, 0.679425538604203], # shift2
+            #box_pos = [0.63522776, -0.3287869, 0.82162434], # shift2
+            #box_quat=[0.6775825618903728, 0, 0, 0.679425538604203], # shift2
             )
 
     play_env = GymWrapper(play_env)
@@ -146,7 +146,7 @@ def main(args):
     with tf.compat.v1.Session() as sess:
         sess.run(init_op)
         # Load Checkpoint
-        ckpt_path = './reach_shift2/trpo_gail.transition_limitation_2500.SawyerLift.g_step_1.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/'
+        ckpt_path = './reach_and_grasp_weights/reach_one/trpo_gail.transition_limitation_2100.SawyerLift.g_step_1.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/'
         ckpt = tf.compat.v1.train.get_checkpoint_state(ckpt_path)
         saver.restore(sess, ckpt.model_checkpoint_path)
         
@@ -193,7 +193,7 @@ def main(args):
         saver_2 = tf.compat.v1.train.Saver(max_to_keep=5)
         with tf.compat.v1.Session() as sess:
             sess.run(init_op)
-            ckpt_path_2 = './checkpoint/grasptrpo_gail.transition_limitation_2000.SawyerLift.g_step_1.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/' 
+            ckpt_path_2 = './reach_and_grasp_weights/grasp_shift1_after_reach/grasptrpo_gail.transition_limitation_2000.SawyerLift.g_step_1.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/' 
             ckpt_2 = tf.compat.v1.train.get_checkpoint_state(ckpt_path_2)
             saver_2.restore(sess,ckpt_2.model_checkpoint_path)
 

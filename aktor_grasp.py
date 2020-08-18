@@ -93,18 +93,26 @@ def main(args):
             control_freq=100,
             gripper_visualization=True,
             reward_shaping=True,
-            #box_pos = [0.63522776, -0.3287869, 0.82162434], # shift2
-            #box_quat=[0.6775825618903728, 0, 0, 0.679425538604203], # shift2
-            box_pos = [0.23522776, 0.2287869, 0.82162434], #shift3
-            box_quat=[0.3775825618903728, 0, 0, 0.679425538604203], #shift3
-            #box_pos = [0.53522776, 0.3287869, 0.82162434], #shift4
+            box_pos = [0.63522776, -0.3287869, 0.82162434], # shift2
+            box_quat=[0.6775825618903728, 0, 0, 0.679425538604203], # shift2
+            box_end=[0.3, 0.1, 1.0] # shift 2
+            #box_pos = [0.23522776, 0.2287869, 0.82162434], #shift3
+            #box_quat=[0.3775825618903728, 0, 0, 0.679425538604203], #shift3
+            #box_pos = [0.53522776, 0.3287869, 0.82162434], #shift4, try to increase traj limit to 2000
             #box_quat=[0.5775825618903728, 0, 0, 0.679425538604203], #shift4
+            #box_pos = [0.53522776, 0.1287869, 0.82162434], #shift5
+            #box_quat=[0.4775825618903728, 0, 0, 0.679425538604203], #shift5
+            #box_pos = [0.48522776, -0.187869, 0.82162434], #shift6
+            #box_quat=[0.8775825618903728, 0, 0, 0.679425538604203], #shift6
+            #box_pos = [0.43522776, -0.367869, 0.82162434], #shift7
+            #box_quat=[0.2775825618903728, 0, 0, 0.679425538604203], #shift7
             ) # Switch from gym to robosuite, also add reward shaping to see reach goal
 
-    env = GymWrapper(env) # wrap in the gym environment
+    env = GymWrapper(env, keys=None, generalized_goal=True) # wrap in the gym environment
 
-    task = 'train'
+    #task = 'train'
     #task = 'evaluate'
+    task = 'cont_training'
 
     
     def policy_fn(name, ob_space, ac_space, reuse=False):
@@ -132,15 +140,21 @@ def main(args):
             has_renderer=True,
             control_freq=100,
             gripper_visualization=True,
-            #box_pos = [0.63522776, -0.3287869, 0.82162434], # shift2
-            #box_quat=[0.6775825618903728, 0, 0, 0.679425538604203], # shift2
-            box_pos = [0.23522776, 0.2287869, 0.82162434], #shift3
-            box_quat=[0.3775825618903728, 0, 0, 0.679425538604203], #shift3
+            box_pos = [0.63522776, -0.3287869, 0.82162434], # shift2
+            box_quat=[0.6775825618903728, 0, 0, 0.679425538604203], # shift2
+            #box_pos = [0.23522776, 0.2287869, 0.82162434], #shift3
+            #box_quat=[0.3775825618903728, 0, 0, 0.679425538604203], #shift3
             #box_pos = [0.53522776, 0.3287869, 0.82162434], #shift4
             #box_quat=[0.5775825618903728, 0, 0, 0.679425538604203], #shift4
+            #box_pos = [0.53522776, 0.1287869, 0.82162434], #shift5
+            #box_quat=[0.4775825618903728, 0, 0, 0.679425538604203], #shift5
+            #box_pos = [0.48522776, -0.187869, 0.82162434], #shift6
+            #box_quat=[0.8775825618903728, 0, 0, 0.679425538604203], #shift6
+            #box_pos = [0.43522776, -0.367869, 0.82162434], #shift7
+            #box_quat=[0.2775825618903728, 0, 0, 0.679425538604203], #shift7
             )
 
-    play_env = GymWrapper(play_env)
+    play_env = GymWrapper(play_env, keys=None, generalized_goal=False) # false for loading prevs
     
     #Weights are loaded from reach model grasp_strange
 
@@ -150,8 +164,8 @@ def main(args):
     
     # Setup network
     # ----------------------------------------
-    ob_space = env.observation_space
-    ac_space = env.action_space
+    ob_space = play_env.observation_space
+    ac_space = play_env.action_space
     pi_reach = policy_fn("pi", ob_space, ac_space, reuse=False)
 
     # Hack for loading policies using tensorflow
@@ -160,7 +174,13 @@ def main(args):
     with tf.compat.v1.Session() as sess:
         sess.run(init_op)
         # Load Checkpoint
+        #ckpt_path = './reach_and_grasp_weights/reach_one/trpo_gail.transition_limitation_2100.SawyerLift.g_step_1.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/'
         ckpt_path = './reach_and_grasp_weights/reach_shift2/trpo_gail.transition_limitation_2500.SawyerLift.g_step_1.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/'
+        #ckpt_path = './reach_and_grasp_weights/reach_3_almost/trpo_gail.transition_limitation_1100.SawyerLift.g_step_1.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/'
+        #ckpt_path = './reach_and_grasp_weights/reach_4/trpo_gail.transition_limitation_2400.SawyerLift.g_step_1.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/' # problem child 2
+        #ckpt_path = './reach_and_grasp_weights/reach_5/trpo_gail.transition_limitation_2000.SawyerLift.g_step_1.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/' #problem child 1
+        #ckpt_path = './reach_and_grasp_weights/reach_6/trpo_gail.transition_limitation_2500.SawyerLift.g_step_1.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/'
+        #ckpt_path = './reach_and_grasp_weights/reach_7/trpo_gail.transition_limitation_3000.SawyerLift.g_step_1.d_step_1.policy_entcoeff_0.adversary_entcoeff_0.001.seed_0/'
         ckpt = tf.compat.v1.train.get_checkpoint_state(ckpt_path)
         saver.restore(sess, ckpt.model_checkpoint_path)
         
@@ -169,7 +189,7 @@ def main(args):
         _, _, last_ob, last_jpos, obs_array, jpos_array = runner_1_traj(play_env,
                 pi_reach,
                 None,
-                timesteps_per_batch=2500,
+                timesteps_per_batch=3500,
                 number_trajs=1,
                 stochastic_policy=args.stochastic_policy,
                 save=False
@@ -210,7 +230,41 @@ def main(args):
             animate=True)
 
         env.close()
+    
+    elif task =='cont_training':
 
+        play_env.close()
+
+       # with tf.compat.v1.Session(config=tf.ConfigProto()):
+        ob_dim = env.observation_space.shape[0]
+        ac_dim = env.action_space.shape[0]
+        
+        #with tf.compat.v1.variable_scope("vf_aktr"):
+        cont_vf = NeuralNetValueFunction(ob_dim, ac_dim)
+        #with tf.compat.v1.variable_scope("pi_aktr"):
+        cont_policy = GaussianMlpPolicy(ob_dim, ac_dim)
+
+        ckpt_path_cont = './checkpoint/grasp_acktr_rl.transition_limitation_1500.SawyerLift' 
+        
+        stat_cont = "./checkpoint/grasp_acktr_rl.transition_limitation_1500.SawyerLift/filter_stats_30063000.npz"
+        
+        old_acktr_learn(env, policy=cont_policy, vf=cont_vf,
+            gamma=0.99, lam=0.97, timesteps_per_batch=1500,
+            desired_kl=0.001,
+            num_timesteps=args.num_timesteps,
+            save_per_iter=args.save_per_iter,
+            ckpt_dir=args.checkpoint_dir,
+            traj_limitation=args.traj_limitation,
+            last_ob=obs_array,
+            last_jpos=jpos_array,
+            animate=True,
+            cont_training=True,
+            load_path=ckpt_path_cont,
+            obfilter_load=stat_cont)
+
+        env.close()
+
+ 
 
     elif task =='evaluate':
        # with tf.compat.v1.Session(config=tf.ConfigProto()):
@@ -230,6 +284,12 @@ def main(args):
             sess3.run(init_op)
                     
             ckpt_path_2 = './checkpoint/grasp_acktr_rl.transition_limitation_1500.SawyerLift' 
+            #ckpt_path_2 = './reach_and_grasp_weights/grasp_and_pickup2/grasp_acktr_rl.transition_limitation_1500.SawyerLift' # shift 2
+            #ckpt_path_2 = './reach_and_grasp_weights/grasp_3/grasp_acktr_rl.transition_limitation_1000.SawyerLift' # shift 3
+            #ckpt_path_2 = './reach_and_grasp_weights/grasp_4/grasp_acktr_rl.transition_limitation_1200.SawyerLift' # shift 4
+            #ckpt_path_2 = './reach_and_grasp_weights/grasp_5/grasp_acktr_rl.transition_limitation_1200.SawyerLift' # shift 5 
+            #ckpt_path_2 = './reach_and_grasp_weights/grasp_and_then_throws_somehow_6/grasp_acktr_rl.transition_limitation_1500.SawyerLift' #shift 6
+            #ckpt_path_2 = './reach_and_grasp_weights/grasp_pickup_7/grasp_acktr_rl.transition_limitation_1500.SawyerLift' #shift 7
             ckpt_2 = tf.compat.v1.train.get_checkpoint_state(ckpt_path_2)
             saver_2.restore(sess3,ckpt_2.model_checkpoint_path)
 
@@ -237,12 +297,19 @@ def main(args):
 
             cum_rew = 0
 
-            ob = last_ob
-            prev_ob = np.float32(np.zeros(ob.shape)) # check if indeed starts at all zeros
+            #ob = last_ob
+            #prev_ob = np.float32(np.zeros(ob.shape)) # check if indeed starts at all zeros
 
-            obfilter = ZFilter(play_env.observation_space.shape)
+            obfilter = ZFilter(env.observation_space.shape)
 
-            statsu = np.load("./checkpoint/grasp_acktr_rl.transition_limitation_1500.SawyerLift/filter_stats_22953000.npz")
+            statsu = np.load("./checkpoint/grasp_acktr_rl.transition_limitation_1500.SawyerLift/filter_stats_29703000.npz")
+            
+            #statsu = np.load("./reach_and_grasp_weights/grasp_and_pickup2/grasp_acktr_rl.transition_limitation_1500.SawyerLift/filter_stats_22953000.npz") # shift 2
+            #statsu = np.load("./reach_and_grasp_weights/grasp_3/grasp_acktr_rl.transition_limitation_1000.SawyerLift/filter_stats_21002000.npz") # shift 3
+            #statsu = np.load("./reach_and_grasp_weights/grasp_4/grasp_acktr_rl.transition_limitation_1200.SawyerLift/filter_stats_20162400.npz") # shift 4
+            #statsu = np.load("./reach_and_grasp_weights/grasp_5/grasp_acktr_rl.transition_limitation_1200.SawyerLift/filter_stats_26066400.npz") #shift 5
+            #statsu = np.load("./reach_and_grasp_weights/grasp_and_then_throws_somehow_6/grasp_acktr_rl.transition_limitation_1500.SawyerLift/filter_stats_27363000.npz") #shift 6
+            #statsu = np.load("./reach_and_grasp_weights/grasp_pickup_7/grasp_acktr_rl.transition_limitation_1500.SawyerLift/filter_stats_22773000.npz") #shift 7
 
             print("load n: ", statsu["n"])
             print("load M: ", statsu["M"])
@@ -255,7 +322,11 @@ def main(args):
             print("obf n: ", obfilter.rs._n)
             print("obf M: ", obfilter.rs._M)
             print("obf S: ", obfilter.rs._S)
-            
+
+
+            env.set_robot_joint_positions(last_jpos)
+            ob = np.concatenate((last_ob,env.box_end),axis=0) 
+            prev_ob = np.float32(np.zeros(ob.shape)) # check if indeed starts at all zeros
             
             ob = obfilter(ob)
 
@@ -266,15 +337,15 @@ def main(args):
                 prev_ob = np.copy(ob)
                 
                 scaled_ac = env.action_space.low + (ac + 1.) * 0.5 * (env.action_space.high - env.action_space.low)
-                scaled_ac = np.clip(scaled_ac, play_env.action_space.low, play_env.action_space.high)
+                scaled_ac = np.clip(scaled_ac, env.action_space.low, env.action_space.high)
 
-                ob, rew, new, _ = play_env.step(scaled_ac)
+                ob, rew, new, _ = env.step(scaled_ac)
 
                 ob = obfilter(ob)
 
                 cum_rew += rew
 
-                play_env.render() # check the running in for the first part
+                env.render() # check the running in for the first part
                 #logger.log("rendering for reach policy")
 
                 if new or tt >= args.traj_limitation:
